@@ -1,0 +1,19 @@
+# Ignorar arquivos e pastas gerados pelo Flutter
+.dart_tool/
+.flutter-tool/
+.packages
+.pub-cache/
+.vscode/
+
+# Ignorar o ambiente de desenvolvimento local
+/android/local.properties
+/ios/.symlinks/
+/ios/Flutter/Generated.xcconfig
+
+# Ignorar a pasta de compilação
+/build/
+
+# Ignorar arquivos de dependências e cache
+/ios/Flutter/Flutter.framework/
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/engine/
