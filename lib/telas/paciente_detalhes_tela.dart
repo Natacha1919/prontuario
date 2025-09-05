@@ -4,18 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:prontuario_medico/modelos/anamnese.dart';
+import 'package:prontuario_medico/modelos/atendimento_evento.dart';
+import 'package:prontuario_medico/modelos/devolutiva.dart';
 import 'package:prontuario_medico/modelos/exame_anterior.dart';
-import 'package:prontuario_medico/modelos/exame_categoria.dart';
 import 'package:prontuario_medico/modelos/exame_resultado.dart';
 import 'package:prontuario_medico/modelos/exame_solicitacao.dart';
 import 'package:prontuario_medico/modelos/paciente.dart';
+import 'package:prontuario_medico/servicos/gerador_pdf.dart';
 import 'package:prontuario_medico/telas/anamnese_form_tela.dart';
+import 'package:prontuario_medico/telas/atendimento_evento_form_tela.dart';
+import 'package:prontuario_medico/telas/devolutiva_form_tela.dart';
 import 'package:prontuario_medico/telas/exame_resultado_form_tela.dart';
-import 'package:prontuario_medico/telas/paciente_form_tela.dart';
+import 'package:prontuario_medico/telas/exame_solicitacao_tela.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:prontuario_medico/servicos/gerador_pdf.dart';
-import 'package:prontuario_medico/telas/tela_principal.dart' as tela_principal; // Importa a cor primária
 
 final supabase = Supabase.instance.client;
 
@@ -29,14 +31,18 @@ class PacienteDetalhesTela extends StatefulWidget {
 
 class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
   int _selectedIndex = 0;
-  final List<String> _tabs = ['Anamneses', 'Solicitar Exames', 'Anexos', 'Resultados'];
+  final List<String> _tabs = ['Atendimentos', 'Evolução/Checklist', 'Anexos', 'Solicitações'];
   bool _isUploading = false;
-  
-  bool _isDownloading = false;
 
+  // --- Funções de Busca ---
   Future<List<Anamnese>> _buscarAnamneses() async {
     final data = await supabase.from('anamneses').select().eq('paciente_id', widget.paciente.id!).order('created_at', ascending: false);
     return data.map((item) => Anamnese.fromMap(item)).toList();
+  }
+
+  Future<List<AtendimentoEvento>> _buscarEventos() async {
+    final data = await supabase.from('atendimento_eventos').select().eq('paciente_id', widget.paciente.id!).order('created_at', ascending: false);
+    return data.map((item) => AtendimentoEvento.fromMap(item)).toList();
   }
 
   Future<List<ExameAnterior>> _buscarExamesAnteriores() async {
@@ -54,8 +60,9 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
     return data.isNotEmpty ? ExameResultado.fromMap(data.first) : null;
   }
   
+  // --- Funções de Ação ---
   void _abrirFormularioAnamnese({Anamnese? anamnese}) async {
-    final resultado = await Navigator.push<Anamnese>(context, MaterialPageRoute(builder: (context) => AnamneseFormTela(pacienteId: widget.paciente.id ?? 0, anamnese: anamnese)));
+    final resultado = await Navigator.push<Anamnese>(context, MaterialPageRoute(builder: (context) => AnamneseFormTela(pacienteId: widget.paciente.id!, anamnese: anamnese)));
     if (resultado != null) {
       if (anamnese != null) {
         await supabase.from('anamneses').update(resultado.toMap()).eq('id', anamnese.id!);
@@ -98,75 +105,78 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
     }
   }
 
-  Future<void> _gerarLaudoPDF() async {
-    setState(() => _isDownloading = true);
-    try {
-      await GeradorPdf.gerarLaudoCompleto(context, widget.paciente);
-    } finally {
-      if (mounted) setState(() => _isDownloading = false);
-    }
-  }
-
   Future<void> _abrirFormularioResultados(ExameSolicitacao solicitacao) async {
     final resultadoExistente = await _buscarResultadoParaSolicitacao(solicitacao.id);
     Navigator.push(context, MaterialPageRoute(builder: (context) => ExameResultadoFormTela(solicitacao: solicitacao, resultadoExistente: resultadoExistente)))
     .then((_) => setState(() {}));
   }
 
+  void _abrirFormularioDevolutiva() async {
+    final resultado = await Navigator.push<Devolutiva>(context, MaterialPageRoute(builder: (context) => DevolutivaFormTela(pacienteId: widget.paciente.id!)));
+    if (resultado != null) {
+      await supabase.from('devolutivas').insert(resultado.toMap());
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Devolutiva salva com sucesso!'), backgroundColor: Colors.green));
+      }
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: tela_principal.corPrimaria,
-        foregroundColor: Colors.white,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Prontuário'),
-            Text(widget.paciente.nomeCompleto, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
-          ],
-        ),
-        actions: [
-          _isDownloading
-          ? Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-            )
-          : Padding(
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Prontuário'),
+              Text(widget.paciente.nomeCompleto, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+            ],
+          ),
+          actions: [
+            Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: ElevatedButton.icon(
-                onPressed: _gerarLaudoPDF,
-                icon: const Icon(Icons.download, size: 16),
-                label: const Text('Baixar PDF'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Theme.of(context).primaryColor,
-                ),
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => PacienteFormTela(paciente: widget.paciente)))
+                      .then((_) => setState(() {}));
+                },
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Editar'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Theme.of(context).primaryColor),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => PacienteFormTela(paciente: widget.paciente)))
-                  .then((_) => setState(() {}));
-              },
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Editar'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Theme.of(context).primaryColor),
-            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(kToolbarHeight),
+            child: _buildInternalNavBar(),
           ),
-        ],
-      ),
-      body: ListView(
-        children: [
-          _buildPatientInfoCard(),
-          _buildInternalNavBar(),
-          _buildCurrentTabContent(),
-        ],
+        ),
+        body: Column(
+          children: [
+            _buildPatientInfoCard(),
+            _buildInternalNavBar(),
+            Expanded( // O TabBarView agora ocupa o espaço restante
+              child: TabBarView(
+                children: [
+                  _buildAtendimentosTab(),
+                  _buildEvolucaoChecklistTab(),
+                  _buildExamesTab(),
+                  _buildSolicitacoesTab(),
+                ],
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _abrirFormularioDevolutiva,
+          icon: const Icon(Icons.assignment_turned_in_outlined),
+          label: const Text('Criar Devolutiva'),
+          backgroundColor: Colors.teal,
+        ),
       ),
     );
   }
@@ -188,7 +198,7 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(widget.paciente.nomeCompleto, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                  Text('${_calculateAge(widget.paciente.dataNascimento)} anos • Sexo: ${widget.paciente.sexo}'),
+                  Text('${_calculateAge(widget.paciente.dataNascimento)} anos • Prontuário: ${widget.paciente.numeroProntuario}'),
                 ],
               ),
             ],
@@ -196,9 +206,9 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
           const SizedBox(height: 24),
           Row(
             children: [
-              Expanded(child: _buildInfoColumn(Icons.badge_outlined, 'Nº Prontuário', widget.paciente.numeroProntuario.toString())),
-              Expanded(child: _buildInfoColumn(Icons.phone_outlined, 'Contato Paciente', widget.paciente.cpf)),
-              Expanded(child: _buildInfoColumn(Icons.phone_outlined, 'Contato Responsável', widget.paciente.responsavelContato.isNotEmpty ? widget.paciente.responsavelContato : 'N/A')),
+              // Certificando-se de que o texto é tratável para nulo, se necessário
+              Expanded(child: _buildInfoColumn(Icons.email_outlined, 'Contato Paciente', widget.paciente.cpf ?? 'N/A')),
+              Expanded(child: _buildInfoColumn(Icons.phone_outlined, 'Contato Responsável', widget.paciente.responsavelContato?.isNotEmpty ?? false ? widget.paciente.responsavelContato : 'N/A')),
               Expanded(child: _buildInfoColumn(Icons.calendar_today_outlined, 'Data de Nascimento', widget.paciente.dataNascimento)),
               Expanded(child: _buildInfoColumn(Icons.location_on_outlined, 'Endereço', widget.paciente.endereco.isNotEmpty ? widget.paciente.endereco : 'N/A')),
             ],
@@ -269,17 +279,15 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
 
   Widget _buildAtendimentosTab() {
     return Column(children: [
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 16.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Anamneses', style: Theme.of(context).textTheme.titleLarge), ElevatedButton.icon(onPressed: () => _abrirFormularioAnamnese(), icon: const Icon(Icons.add), label: const Text('Nova'))])),
-      FutureBuilder<List<Anamnese>>(
+      Padding(padding: const EdgeInsets.all(16.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Anamneses', style: Theme.of(context).textTheme.titleLarge), ElevatedButton.icon(onPressed: () => _abrirFormularioAnamnese(), icon: const Icon(Icons.add), label: const Text('Nova'))])),
+      Expanded(child: FutureBuilder<List<Anamnese>>(
         future: _buscarAnamneses(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Padding(padding: EdgeInsets.all(32.0), child: Center(child: CircularProgressIndicator()));
-          if (snapshot.hasError) return Padding(padding: const EdgeInsets.all(32.0), child: Center(child: Text('Erro: ${snapshot.error}')));
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: Text('Erro: ${snapshot.error}'));
           final anamneses = snapshot.data ?? [];
-          if (anamneses.isEmpty) return const Padding(padding: EdgeInsets.all(32.0), child: Center(child: Text('Nenhuma anamnese registrada.')));
+          if (anamneses.isEmpty) return const Center(child: Text('Nenhuma anamnese registrada.'));
           return ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
             itemCount: anamneses.length,
             itemBuilder: (context, index) {
               final anamnese = anamneses[index];
@@ -287,7 +295,7 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
             },
           );
         },
-      ),
+      )),
     ]);
   }
 
@@ -438,18 +446,5 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
     } catch (e) {
       return 0;
     }
-  }
-
-  Widget _buildInfoColumn(IconData icon, String title, String value) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [Icon(icon, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12))]),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-        ],
-      ),
-    );
   }
 }
