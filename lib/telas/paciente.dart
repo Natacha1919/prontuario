@@ -1,37 +1,64 @@
 // lib/modelos/paciente.dart
 
 class Paciente {
-  // A ID agora é um inteiro e pode ser nula (para novos pacientes)
-  final int? id; 
+  final int? id;
+  final DateTime? dataAbertura;
   final String nomeCompleto;
-  final String cpf;
   final String dataNascimento;
+  final String sexo;
+  final String cpf;
+  final String endereco;
+  final String responsavelNome;
+  final String responsavelContato;
+  final String numeroProntuario;
+  final String turmaAcademica;
+  final String professorResponsavel;
 
   Paciente({
-    this.id, // Não é mais 'required'
+    this.id,
+    this.dataAbertura,
     required this.nomeCompleto,
-    required this.cpf,
     required this.dataNascimento,
+    required this.sexo,
+    required this.cpf,
+    this.endereco = '', // Valor padrão se não informado
+    required this.responsavelNome,
+    required this.responsavelContato,
+    required this.numeroProntuario,
+    required this.turmaAcademica,
+    required this.professorResponsavel,
   });
 
-  // Converte um objeto Paciente para um Map para enviar à API.
-  // O Supabase ignora a ID na inserção, o que é perfeito.
   Map<String, dynamic> toMap() {
     return {
-      if (id != null) 'id': id, // Inclui a ID apenas se ela existir
+      // Ao salvar, o Supabase gerencia o ID e created_at, não precisamos enviá-los aqui
       'nomeCompleto': nomeCompleto,
-      'cpf': cpf,
       'dataNascimento': dataNascimento,
+      'sexo': sexo,
+      'cpf': cpf,
+      'endereco': endereco,
+      'responsavel_nome': responsavelNome,
+      'responsavel_contato': responsavelContato,
+      'numero_prontuario': numeroProntuario,
+      'turma_academica': turmaAcademica,
+      'professor_responsavel': professorResponsavel,
     };
   }
 
-  // Cria um objeto Paciente a partir de um Map (JSON) recebido da API.
   factory Paciente.fromMap(Map<String, dynamic> map) {
     return Paciente(
-      id: map['id'], // O Supabase retorna a ID como int
+      id: map['id'],
+      dataAbertura: map['created_at'] != null ? DateTime.parse(map['created_at']) : null,
       nomeCompleto: map['nomeCompleto'] ?? '',
-      cpf: map['cpf'] ?? '',
       dataNascimento: map['dataNascimento'] ?? '',
+      sexo: map['sexo'] ?? '',
+      cpf: map['cpf'] ?? '',
+      endereco: map['endereco'] ?? '',
+      responsavelNome: map['responsavel_nome'] ?? '',
+      responsavelContato: map['responsavel_contato'] ?? '',
+      numeroProntuario: map['numero_prontuario'] ?? '',
+      turmaAcademica: map['turma_academica'] ?? '',
+      professorResponsavel: map['professor_responsavel'] ?? '',
     );
   }
 }
