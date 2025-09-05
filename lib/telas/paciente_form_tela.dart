@@ -31,7 +31,7 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
   @override
   void initState() {
     super.initState();
-    // Inicializa os controladores com os dados existentes (se estiver editando)
+    // Inicialização segura dos controladores com valores padrão se nulos
     _nomeController = TextEditingController(text: widget.paciente?.nomeCompleto ?? '');
     _dataNascimentoController = TextEditingController(text: widget.paciente?.dataNascimento ?? '');
     _sexoController = TextEditingController(text: widget.paciente?.sexo ?? '');
@@ -45,14 +45,13 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
 
   void _salvarFormulario() async {
     if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true); // Mostra indicador de carregamento
+      setState(() => _isLoading = true);
 
       // Gera o número do prontuário apenas se for um novo paciente
-      final numeroProntuario = widget.paciente?.numeroProntuario ?? 
-          DateFormat('yyyyMMddHHmmss').format(DateTime.now());
+      final numeroProntuario = widget.paciente?.numeroProntuario ?? DateFormat('yyyyMMddHHmmss').format(DateTime.now());
       
       final pacienteData = Paciente(
-        id: widget.paciente?.id,
+        id: widget.paciente?.id, // Mantém o ID se estiver editando
         nomeCompleto: _nomeController.text,
         dataNascimento: _dataNascimentoController.text,
         sexo: _sexoController.text,
@@ -74,7 +73,7 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
             'tipo_acao': 'Paciente Criado',
             'descricao': 'Novo paciente "${pacienteData.nomeCompleto}" cadastrado.',
             'usuario_id': supabase.auth.currentUser?.id,
-            'paciente_id': widget.paciente?.id, // Paciente ID será nulo aqui, o Supabase vai atribuir um novo.
+            'paciente_id': widget.paciente?.id, // Este ID será nulo na criação, Supabase cuidará disso.
             'paciente_nome': pacienteData.nomeCompleto,
           });
         } else {
@@ -100,26 +99,11 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar paciente: $e'), backgroundColor: Colors.red));
         }
       } finally {
-        // Garante que o loading seja desativado mesmo em caso de erro
         if (mounted) {
           setState(() => _isLoading = false);
         }
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _nomeController.dispose();
-    _dataNascimentoController.dispose();
-    _sexoController.dispose();
-    _cpfController.dispose();
-    _enderecoController.dispose();
-    _responsavelNomeController.dispose();
-    _responsavelContatoController.dispose();
-    _turmaController.dispose();
-    _professorController.dispose();
-    super.dispose();
   }
 
   @override
@@ -143,7 +127,7 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
             child: ElevatedButton.icon(
               onPressed: () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => PacienteFormTela(paciente: widget.paciente)))
-                    .then((_) => setState(() {})); // Atualiza a lista se a navegação voltar
+                    .then((_) => setState(() {}));
               },
               icon: const Icon(Icons.edit_outlined, size: 16),
               label: const Text('Editar'),
@@ -180,9 +164,9 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
                 ),
                  const SizedBox(height: 16),
                 _buildTextField(controller: _enderecoController, label: 'Endereço Completo'),
-                const SizedBox(height: 16), // Adicionado espaço
+                const SizedBox(height: 16),
                 _buildTextField(controller: _responsavelNomeController, label: 'Nome do Responsável'),
-                const SizedBox(height: 16), // Adicionado espaço
+                const SizedBox(height: 16),
                 _buildTextField(controller: _responsavelContatoController, label: 'Contato do Responsável'),
               ],
             ),
@@ -221,7 +205,6 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
           filled: true,
           fillColor: Colors.white,
         ),
-        // Validação condicional para campos obrigatórios
         validator: label.endsWith('*') ? (v) => v!.trim().isEmpty ? 'Campo obrigatório' : null : null,
       ),
     );
@@ -244,7 +227,7 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
               ],
             ),
             const Divider(height: 24),
-            Column( // Usei Column em vez de GridView para simplificar e garantir que os campos se encaixem
+            Column(
               children: children.map((child) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6.0),
                 child: child,
@@ -263,10 +246,10 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')), // Retorna 'false' se cancelar
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
           const SizedBox(width: 16),
           _isLoading
-              ? const CircularProgressIndicator() // Mostra o indicador enquanto salva
+              ? const CircularProgressIndicator()
               : ElevatedButton.icon(
                   onPressed: _salvarFormulario,
                   icon: const Icon(Icons.save_alt_outlined),
