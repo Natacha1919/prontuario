@@ -55,7 +55,7 @@ class _PacienteDetalhesTelaState extends State<PacienteDetalhesTela> {
   }
   
   void _abrirFormularioAnamnese({Anamnese? anamnese}) async {
-    final resultado = await Navigator.push<Anamnese>(context, MaterialPageRoute(builder: (context) => AnamneseFormTela(pacienteId: widget.paciente.id!, anamnese: anamnese)));
+    final resultado = await Navigator.push<Anamnese>(context, MaterialPageRoute(builder: (context) => AnamneseFormTela(pacienteId: widget.paciente.id ?? 0, anamnese: anamnese)));
     if (resultado != null) {
       if (anamnese != null) {
         await supabase.from('anamneses').update(resultado.toMap()).eq('id', anamnese.id!);
