@@ -3,19 +3,21 @@
 import 'package:flutter/material.dart';
 import 'package:prontuario_medico/modelos/paciente.dart';
 import 'package:intl/intl.dart';
-import 'package:prontuario_medico/telas/tela_principal.dart' as tela_principal;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+final supabase = Supabase.instance.client;
 
 class PacienteFormTela extends StatefulWidget {
   final Paciente? paciente;
   const PacienteFormTela({super.key, this.paciente});
-
   @override
   State<PacienteFormTela> createState() => _PacienteFormTelaState();
 }
 
 class _PacienteFormTelaState extends State<PacienteFormTela> {
   final _formKey = GlobalKey<FormState>();
-
+  bool _isLoading = false;
+  
   late TextEditingController _nomeController;
   late TextEditingController _dataNascimentoController;
   late TextEditingController _sexoController;
@@ -29,21 +31,27 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
   @override
   void initState() {
     super.initState();
-    _nomeController = TextEditingController(text: widget.paciente?.nomeCompleto);
-    _dataNascimentoController = TextEditingController(text: widget.paciente?.dataNascimento);
-    _sexoController = TextEditingController(text: widget.paciente?.sexo);
-    _cpfController = TextEditingController(text: widget.paciente?.cpf);
-    _enderecoController = TextEditingController(text: widget.paciente?.endereco);
-    _responsavelNomeController = TextEditingController(text: widget.paciente?.responsavelNome);
-    _responsavelContatoController = TextEditingController(text: widget.paciente?.responsavelContato);
-    _turmaController = TextEditingController(text: widget.paciente?.turmaAcademica);
-    _professorController = TextEditingController(text: widget.paciente?.professorResponsavel);
+    // Inicializa os controladores com os dados existentes (se estiver editando)
+    _nomeController = TextEditingController(text: widget.paciente?.nomeCompleto ?? '');
+    _dataNascimentoController = TextEditingController(text: widget.paciente?.dataNascimento ?? '');
+    _sexoController = TextEditingController(text: widget.paciente?.sexo ?? '');
+    _cpfController = TextEditingController(text: widget.paciente?.cpf ?? '');
+    _enderecoController = TextEditingController(text: widget.paciente?.endereco ?? '');
+    _responsavelNomeController = TextEditingController(text: widget.paciente?.responsavelNome ?? '');
+    _responsavelContatoController = TextEditingController(text: widget.paciente?.responsavelContato ?? '');
+    _turmaController = TextEditingController(text: widget.paciente?.turmaAcademica ?? '');
+    _professorController = TextEditingController(text: widget.paciente?.professorResponsavel ?? '');
   }
 
-  void _salvarFormulario() {
+  void _salvarFormulario() async {
     if (_formKey.currentState!.validate()) {
-      final numeroProntuario = widget.paciente?.numeroProntuario ?? DateFormat('yyyyMMddHHmmss').format(DateTime.now());
-      final pacienteProcessado = Paciente(
+      setState(() => _isLoading = true); // Mostra indicador de carregamento
+
+      // Gera o número do prontuário apenas se for um novo paciente
+      final numeroProntuario = widget.paciente?.numeroProntuario ?? 
+          DateFormat('yyyyMMddHHmmss').format(DateTime.now());
+      
+      final pacienteData = Paciente(
         id: widget.paciente?.id,
         nomeCompleto: _nomeController.text,
         dataNascimento: _dataNascimentoController.text,
@@ -56,7 +64,47 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
         turmaAcademica: _turmaController.text,
         professorResponsavel: _professorController.text,
       );
-      Navigator.of(context).pop(pacienteProcessado);
+
+      try {
+        if (widget.paciente == null) {
+          // Salva um novo paciente
+          await supabase.from('pacientes').insert(pacienteData.toMap());
+          // Registrar atividade de criação de paciente
+          await supabase.from('historico_atividades').insert({
+            'tipo_acao': 'Paciente Criado',
+            'descricao': 'Novo paciente "${pacienteData.nomeCompleto}" cadastrado.',
+            'usuario_id': supabase.auth.currentUser?.id,
+            'paciente_id': widget.paciente?.id, // Paciente ID será nulo aqui, o Supabase vai atribuir um novo.
+            'paciente_nome': pacienteData.nomeCompleto,
+          });
+        } else {
+          // Atualiza um paciente existente
+          await supabase.from('pacientes').update(pacienteData.toMap()).eq('id', pacienteData.id!);
+          // Registrar atividade de atualização de prontuário
+          await supabase.from('historico_atividades').insert({
+            'tipo_acao': 'Prontuário Atualizado',
+            'descricao': 'Prontuário de "${pacienteData.nomeCompleto}" atualizado.',
+            'usuario_id': supabase.auth.currentUser?.id,
+            'paciente_id': pacienteData.id,
+            'paciente_nome': pacienteData.nomeCompleto,
+          });
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Paciente salvo com sucesso!'), backgroundColor: Colors.green));
+          Navigator.of(context).pop(true); // Retorna 'true' para indicar que salvou
+        }
+      } catch (e) {
+        print('Erro ao salvar paciente: $e'); // Log do erro
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar paciente: $e'), backgroundColor: Colors.red));
+        }
+      } finally {
+        // Garante que o loading seja desativado mesmo em caso de erro
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
     }
   }
 
@@ -76,194 +124,156 @@ class _PacienteFormTelaState extends State<PacienteFormTela> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isEditing = widget.paciente != null;
-
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: tela_principal.corPrimaria,
-        foregroundColor: Colors.white,
-        title: Text(isEditing ? 'Editar Paciente' : 'Novo Paciente'),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    isEditing ? 'Atualizar informações de ${widget.paciente!.nomeCompleto}' : 'Insira as informações do novo paciente',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Seção de Informações Pessoais - Ícone azul
-                  _buildSectionCard(
-                    context,
-                    title: 'Informações Pessoais',
-                    icon: Icons.person_outline,
-                    iconColor: Colors.blue,
-                    children: [
-                      _buildTwoColumnLayout([
-                        _buildTextField(context, controller: _nomeController, label: 'Nome Completo', isRequired: true),
-                        _buildTextField(context, controller: _dataNascimentoController, label: 'Data de Nascimento', isRequired: true),
-                      ]),
-                      const SizedBox(height: 16),
-                      _buildTwoColumnLayout([
-                        _buildTextField(context, controller: _sexoController, label: 'Sexo', isRequired: true),
-                        _buildTextField(context, controller: _cpfController, label: 'Contato (CPF ou Telefone)', isRequired: true),
-                      ]),
-                      const SizedBox(height: 16),
-                      _buildTextField(context, controller: _enderecoController, label: 'Endereço'),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Seção de Contato de Emergência (Responsável) - Ícone vermelho
-                  _buildSectionCard(
-                    context,
-                    title: 'Contato de Emergência',
-                    icon: Icons.phone_outlined,
-                    iconColor: Colors.red,
-                    children: [
-                      _buildTwoColumnLayout([
-                        _buildTextField(context, controller: _responsavelNomeController, label: 'Nome do Responsável'),
-                        _buildTextField(context, controller: _responsavelContatoController, label: 'Contato do Responsável'),
-                      ]),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Seção de Dados Acadêmicos - Ícone verde
-                  _buildSectionCard(
-                    context,
-                    title: 'Dados Acadêmicos',
-                    icon: Icons.school_outlined,
-                    iconColor: Colors.green,
-                    children: [
-                      _buildTwoColumnLayout([
-                        _buildTextField(context, controller: _turmaController, label: 'Turma Acadêmica', isRequired: true),
-                        _buildTextField(context, controller: _professorController, label: 'Professor Responsável', isRequired: true),
-                      ]),
-                      if (isEditing) ...[
-                        const SizedBox(height: 16),
-                        _buildInfoRow('Nº do Prontuário:', widget.paciente!.numeroProntuario),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Botões de Ação
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (isEditing)
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Cancelar', style: TextStyle(color: tela_principal.corPrimaria)),
-                        ),
-                      const SizedBox(width: 16),
-                      ElevatedButton.icon(
-                        onPressed: _salvarFormulario,
-                        icon: const Icon(Icons.save_outlined, size: 18),
-                        label: Text(isEditing ? 'Salvar Alterações' : 'Adicionar Paciente'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: tela_principal.corPrimaria,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.paciente == null ? 'Novo Paciente' : 'Editar Paciente'),
+            Text(
+              widget.paciente == null ? 'Cadastrar novo paciente no sistema' : 'Atualizar dados do paciente',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => PacienteFormTela(paciente: widget.paciente)))
+                    .then((_) => setState(() {})); // Atualiza a lista se a navegação voltar
+              },
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Editar'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Theme.of(context).primaryColor),
             ),
           ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            _buildSectionCard(
+              title: 'Informações Pessoais',
+              icon: Icons.person_outline,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildTextField(controller: _nomeController, label: 'Nome Completo *')),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildTextField(controller: _cpfController, label: 'Contato (CPF ou Telefone) *')),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildTextField(controller: _dataNascimentoController, label: 'Data de Nascimento *', hint: 'dd/mm/aaaa')),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildTextField(controller: _sexoController, label: 'Sexo *')),
+                  ],
+                ),
+                 const SizedBox(height: 16),
+                _buildTextField(controller: _enderecoController, label: 'Endereço Completo'),
+                const SizedBox(height: 16), // Adicionado espaço
+                _buildTextField(controller: _responsavelNomeController, label: 'Nome do Responsável'),
+                const SizedBox(height: 16), // Adicionado espaço
+                _buildTextField(controller: _responsavelContatoController, label: 'Contato do Responsável'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildSectionCard(
+              title: 'Dados Administrativos',
+              icon: Icons.business_center_outlined,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildTextField(controller: _turmaController, label: 'Turma Acadêmica *')),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildTextField(controller: _professorController, label: 'Professor Responsável *')),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
+
+  Widget _buildTextField({required TextEditingController controller, required String label, String? hint}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: TextFormField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+        // Validação condicional para campos obrigatórios
+        validator: label.endsWith('*') ? (v) => v!.trim().isEmpty ? 'Campo obrigatório' : null : null,
       ),
     );
   }
 
-  Widget _buildSectionCard(BuildContext context, {required String title, required IconData icon, required Color iconColor, required List<Widget> children}) {
+  Widget _buildSectionCard({required String title, required IconData icon, required List<Widget> children}) {
     return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
-      ),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, color: iconColor), // Usando a nova propriedade `iconColor`
+                Icon(icon, color: Theme.of(context).primaryColor),
                 const SizedBox(width: 8),
-                Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                Text(title, style: Theme.of(context).textTheme.titleLarge),
               ],
             ),
-            const Divider(height: 32),
-            ...children,
+            const Divider(height: 24),
+            Column( // Usei Column em vez de GridView para simplificar e garantir que os campos se encaixem
+              children: children.map((child) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: child,
+              )).toList(),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTwoColumnLayout(List<Widget> children) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth > 600) {
-          return Wrap(
-            spacing: 24.0,
-            runSpacing: 16.0,
-            children: children.map((child) => SizedBox(width: (constraints.maxWidth - 24) / 2 - 1, child: child)).toList(),
-          );
-        } else {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children.map((child) => Padding(padding: const EdgeInsets.only(bottom: 16.0), child: child)).toList(),
-          );
-        }
-      },
-    );
-  }
-
-  Widget _buildTextField(BuildContext context, {required TextEditingController controller, required String label, String? hint, TextInputType? keyboardType, bool isRequired = false}) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: isRequired ? '$label *' : label,
-        hintText: hint,
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-      ),
-      keyboardType: keyboardType,
-      validator: (value) {
-        if (isRequired && (value == null || value.isEmpty)) {
-          return 'Campo obrigatório';
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildInfoRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: RichText(
-        text: TextSpan(
-          style: Theme.of(context).textTheme.bodyLarge,
-          children: [
-            TextSpan(text: title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            TextSpan(text: ' $value'),
-          ],
-        ),
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      color: Colors.white,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancelar')), // Retorna 'false' se cancelar
+          const SizedBox(width: 16),
+          _isLoading
+              ? const CircularProgressIndicator() // Mostra o indicador enquanto salva
+              : ElevatedButton.icon(
+                  onPressed: _salvarFormulario,
+                  icon: const Icon(Icons.save_alt_outlined),
+                  label: const Text('Salvar Paciente'),
+                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+                ),
+        ],
       ),
     );
   }
